@@ -1,0 +1,10 @@
+.git
+.agents
+.vercel
+node_modules
+dist
+intr.mp4
+osvenciummagnetobackground.jpg
+xavier.png
+youngmagneto.png
+*.md
