@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="MAGNUS — AAA тактический симулятор магнетизма с оптическим трекингом рук на базе TensorFlow / MediaPipe." />
+  <title>MAGNUS — Tactical Magnetism Simulation</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800;900&family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/src/styles/index.css" />
+</head>
+<body class="dark-theme">
+  <!-- Game canvas -->
+  <canvas id="game-canvas"></canvas>
+  
+  <!-- Camera feed overlay with TensorFlow AI Vision status -->
+  <div id="camera-overlay">
+    <div class="camera-tf-header">
+      <span class="tf-dot"></span>
+      <span class="tf-label">TF · MEDIAPIPE NEURAL LINK</span>
+      <span class="tf-fps">60 FPS</span>
+    </div>
+    <video id="camera-video" autoplay playsinline muted></video>
+    <canvas id="hand-canvas"></canvas>
+    <div class="camera-corner-tick tl">+</div>
+    <div class="camera-corner-tick tr">+</div>
+    <div class="camera-corner-tick bl">+</div>
+    <div class="camera-corner-tick br">+</div>
+  </div>
+
+  <!-- Camera Swoop & Possession Overlay (Cinematic Sky Descent) -->
+  <div id="camera-swoop-overlay" class="camera-swoop-overlay hidden">
+    <div class="swoop-vignette-frame"></div>
+    <div class="swoop-speed-lines"></div>
+    <div class="swoop-hud-box">
+      <div class="swoop-tf-tag">
+        <span class="swoop-dot"></span> TENSORFLOW NEURAL LINK ACTIVE // FREQ 141.80 MHz
+      </div>
+      <div class="swoop-title">ПОГРУЖЕНИЕ В СОЗНАНИЕ...</div>
+      <div class="swoop-sub">СИНХРОНИЗАЦИЯ БИОМЕТРИИ ЭРИКА ЛЕНШЕРРА</div>
+    </div>
+  </div>
+
+  <!-- HUD -->
+  <div id="hud" class="hidden">
+    <div id="hud-top">
+      <!-- Health Bar (Top Left) -->
+      <div id="hud-hp" class="hud-panel hud-vital-panel">
+        <div class="hud-panel-header">
+          <span class="hud-tag">VITAL TELEMETRY</span>
+          <span class="hud-subtag">LEHNSHERR</span>
+        </div>
+        <div class="hud-hp-row">
+          <div class="hud-bar"><div id="hp-fill" class="hud-bar-fill hp-fill"></div></div>
+          <span id="hp-text" class="hud-val-large">100</span>
+        </div>
+      </div>
+
+      <!-- Locomotion Mode (Standing vs Walking) -->
+      <div id="hud-mode" class="hud-panel hud-mode-panel standing" title="Покажи указательный палец ☝️ или нажми C для переключения">
+        <span id="mode-icon" class="mode-glyph">🛑</span>
+        <div class="mode-info">
+          <span class="hud-tag">LOCOMOTION [☝️ / C]</span>
+          <span id="mode-status" class="mode-state">СТОЯТЬ</span>
+        </div>
+      </div>
+
+      <!-- Objective Tracker (Top Center) -->
+      <div id="hud-objective" class="hud-panel hud-objective-panel">
+        <div class="objective-top-bar">
+          <span class="objective-badge">DIRECTIVE</span>
+          <span id="objective-title" class="objective-headline">МИССИЯ 1: «КОПЬЁ»</span>
+          <span id="objective-counter" class="objective-numeric">0 / 5</span>
+        </div>
+        <div class="objective-bar"><div id="objective-fill" class="objective-fill"></div></div>
+        <div class="objective-meta-bar">
+          <span id="objective-desc" class="objective-brief">Порази мишени турнирным копьём</span>
+          <span id="objective-rem" class="objective-countdown">Осталось: 5</span>
+        </div>
+        <div id="objective-pips" class="objective-pips">
+          <span class="pip"></span>
+          <span class="pip"></span>
+          <span class="pip"></span>
+          <span class="pip"></span>
+          <span class="pip"></span>
+        </div>
+      </div>
+
+      <!-- Dual-Hand Optical Camera Powers -->
+      <div id="hud-powers" class="hud-panel hud-ability-panel">
+        <div class="hud-panel-header">
+          <span class="hud-tag">OPTICAL POWERS</span>
+          <span id="power-status" class="repulsion-status ready">READY</span>
+        </div>
+        <div class="powers-badge-row">
+          <span id="badge-impulse" class="power-hud-badge" title="Сожми левый кулак (или ПКМ / клавиша E) для мощного Магнитного Импульса!">🌀 ИМПУЛЬС [ЛЕВЫЙ КУЛАК / ПКМ]</span>
+          <span id="badge-tear" class="power-hud-badge" title="Сожми оба кулака вместе и резко разорви в стороны! (Клавиша T)">⚡ РАЗРЫВ [T]</span>
+          <span id="badge-implosion" class="power-hud-badge" title="Разведи открытые ладони и с хлопком сведи вместе! (Клавиша Q)">💥 ИМПЛОЗИЯ [Q]</span>
+        </div>
+      </div>
+
+      <!-- Boss HP Bar -->
+      <div id="hud-boss" class="hud-panel hud-boss-panel hidden">
+        <div class="boss-panel-header">
+          <span id="boss-name" class="boss-title">ТАНОС (БОСС)</span>
+          <span id="boss-hp-text" class="boss-val">1000 / 1000</span>
+        </div>
+        <div class="hud-bar boss-bar"><div id="boss-hp-fill" class="hud-bar-fill boss-hp-fill"></div></div>
+      </div>
+    </div>
+
+    <!-- Center Precision Reticle -->
+    <div id="hud-center">
+      <div id="crosshair" class="tactical-reticle">
+        <div class="reticle-corner tl"></div>
+        <div class="reticle-corner tr"></div>
+        <div class="reticle-corner bl"></div>
+        <div class="reticle-corner br"></div>
+        <div class="reticle-center-dot"></div>
+      </div>
+    </div>
+
+    <!-- Bottom HUD stats -->
+    <div id="hud-bottom">
+      <div id="hud-score" class="hud-panel hud-telemetry-box">
+        <span class="hud-tag">COMBAT SCORE</span>
+        <span id="score-text" class="hud-val-mono">0</span>
+      </div>
+      <div id="hud-combo" class="combo-callout hidden">
+        <span class="combo-label">CHAIN MULTIPLIER</span>
+        <span id="combo-text" class="combo-multiplier">x2</span>
+      </div>
+      <div id="hud-wave" class="hud-panel hud-telemetry-box right">
+        <span class="hud-tag">ENGAGEMENT SECTOR</span>
+        <div class="sector-readout">
+          <span id="wave-text" class="hud-val-mono">1/8</span>
+          <span id="wave-name" class="wave-name-label">Волна 1</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Non-overlapping semi-transparent toasts in Top-Left Corner -->
+  <div id="toast-container"></div>
+
+  <!-- Screen: Start (AAA Tactical Asymmetric Military Console) -->
+  <div id="screen-start" class="screen">
+    <div class="tactical-console-container">
+      <div class="console-edge-tag top-left">TAC-OS // 4.9.1</div>
+      <div class="console-edge-tag top-right">SYSTEMS: ARMED</div>
+
+      <div class="console-layout">
+        <!-- Sector Alpha: Primary Command Deck (60%) -->
+        <div class="console-sector sector-command">
+          <div class="dossier-header-bar">
+            <span class="status-indicator live"></span>
+            <span class="dossier-id">CLASSIFIED DOSSIER #001-MAGNUS</span>
+            <span class="dossier-code">// OMEGA PROTOCOL</span>
+          </div>
+
+          <div class="hero-title-group">
+            <h1 class="monumental-title">MAGNUS</h1>
+            <div class="title-sub-deck">
+              <span class="title-accent-tag">MUTANT MONARCH</span>
+              <span class="title-sub-text">MASTER OF FERROUS MATTER</span>
+            </div>
+          </div>
+
+          <p class="mission-narrative">
+            Возьми под контроль электромагнитное поле обеими руками через веб-камеру.
+            Отражай пули, деформируй броневую сталь Освенцима, сокрушай часовых Стражей и сразись с титанами Marvel.
+          </p>
+
+          <div class="tactical-action-deck">
+            <button id="btn-story" class="tactical-cmd-btn primary">
+              <span class="cmd-index">[ 01 ]</span>
+              <div class="cmd-content">
+                <span class="cmd-title">СЮЖЕТНАЯ КАМПАНИЯ</span>
+                <span class="cmd-meta">13 глав: Освенцим, Астрал, Битва с Героями Земли и Ультиматум</span>
+              </div>
+              <span class="cmd-arrow">▶</span>
+            </button>
+
+            <button id="btn-play" class="tactical-cmd-btn secondary">
+              <span class="cmd-index">[ 02 ]</span>
+              <div class="cmd-content">
+                <span class="cmd-title">ТАКТИЧЕСКАЯ АРЕНА</span>
+                <span class="cmd-meta">Бесконечные волны часовых, Стражи и босс Танос</span>
+              </div>
+              <span class="cmd-arrow">▶</span>
+            </button>
+
+            <button id="btn-duel" class="tactical-cmd-btn duel-btn" style="border-color: #00e5ff; background: rgba(0, 229, 255, 0.08);">
+              <span class="cmd-index" style="color: #00e5ff;">[ 03 ]</span>
+              <div class="cmd-content">
+                <span class="cmd-title" style="color: #ffffff;">РЕЖИМ «ДУЭЛИ» (1 НА 1)</span>
+                <span class="cmd-meta" style="color: #94a3b8;">Белая плоскость: уклоняйся [A/D] и метай встречный металл!</span>
+              </div>
+              <span class="cmd-arrow" style="color: #00e5ff;">⚔️</span>
+            </button>
+
+            <button id="btn-mock" class="tactical-cmd-btn ghost">
+              <span class="cmd-index">[ 04 ]</span>
+              <div class="cmd-content">
+                <span class="cmd-title">РУЧНОЙ РЕЖИМ (МЫШЬ + КЛАВИАТУРА)</span>
+                <span class="cmd-meta">Симуляция боевого режима без веб-камеры</span>
+              </div>
+              <span class="cmd-arrow">▶</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Sector Beta: Optical Telemetry & Hardware Control (40%) -->
+        <div class="console-sector sector-telemetry">
+          <div class="telemetry-panel-card">
+            <div class="panel-header">
+              <span class="panel-tag">OPTICAL TELEMETRY</span>
+              <span class="panel-tech">TENSORFLOW ML</span>
+            </div>
+
+            <div class="sensor-matrix">
+              <div class="matrix-row">
+                <span class="m-label">OPTICAL SENSOR</span>
+                <span class="m-val active">ACTIVE (WEBCAM)</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">NEURAL LANDMARKS</span>
+                <span class="m-val">21 3D JOINTS / HAND</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">AIM ENGINE</span>
+                <span class="m-val">LEFT HAND VECTOR</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">KINETIC GRIP</span>
+                <span class="m-val">RIGHT FIST TENSOR</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">MAGNETIC TEAR</span>
+                <span class="m-val">DUAL FISTS RIP [T]</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">IMPLOSION CLAP</span>
+                <span class="m-val">DUAL PALM CLAP [Q]</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">LOCOMOTION</span>
+                <span class="m-val">INDEX FINGER ☝️ / 'C'</span>
+              </div>
+              <div class="matrix-row">
+                <span class="m-label">UI NAVIGATION</span>
+                <span class="m-val">OPTICAL CURSOR + FIST ✊</span>
+              </div>
+            </div>
+
+            <div class="calibration-settings-block">
+              <div class="hardware-row">
+                <label for="slider-sensitivity" class="slider-field-label">
+                  <span class="field-title">КИНЕТИЧЕСКАЯ ЧУВСТВИТЕЛЬНОСТЬ</span>
+                  <span id="label-sensitivity" class="field-readout">130%</span>
+                </label>
+                <div class="slider-track-wrap">
+                  <input type="range" id="slider-sensitivity" min="60" max="240" value="130" class="tactical-slider" />
+                </div>
+              </div>
+
+              <div class="system-toggles-row">
+                <label class="tactical-checkbox-label">
+                  <input type="checkbox" id="chk-quality" class="tactical-checkbox" />
+                  <span>РЕЖИМ БЫСТРОДЕЙСТВИЯ</span>
+                </label>
+                <button id="btn-fullscreen" class="tactical-icon-btn" title="Полноэкранный режим">[ ⛶ FULLSCREEN ]</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screen: Calibration -->
+  <div id="screen-calibration" class="screen hidden">
+    <div class="tactical-dialogue-panel">
+      <div class="panel-header">
+        <span class="panel-tag">OPTICAL CALIBRATION</span>
+        <span class="panel-tech">TENSORFLOW VISION</span>
+      </div>
+      <h2 class="dialogue-title">ИНИЦИАЛИЗАЦИЯ НЕЙРОННОГО ТРЕКИНГА</h2>
+      <p class="dialogue-lead">Держи обе руки в нейтральной позе перед объективом камеры</p>
+      
+      <div id="calibration-ring" class="calibration-ring">
+        <svg viewBox="0 0 120 120">
+          <circle class="ring-bg" cx="60" cy="60" r="54" />
+          <circle id="ring-progress" class="ring-fg" cx="60" cy="60" r="54" />
+        </svg>
+        <span id="calibration-timer">3</span>
+      </div>
+      <p class="dialogue-sub">Клавиша [ R ] — немедленный сброс калибровки</p>
+    </div>
+  </div>
+
+  <!-- Screen: Tutorial -->
+  <div id="screen-tutorial" class="screen hidden">
+    <div class="tactical-dialogue-panel">
+      <div class="panel-header">
+        <span class="panel-tag">COMBAT DIRECTIVE</span>
+        <span id="tutorial-progress-text" class="panel-tech">Шаг 1 из 3</span>
+      </div>
+      <h2 class="dialogue-title">ОБУЧЕНИЕ КИНЕТИЧЕСКИМ ЖЕСТАМ</h2>
+      <div id="tutorial-step" class="tutorial-card">
+        <div id="tutorial-icon" class="tutorial-glyph">✊</div>
+        <p id="tutorial-text" class="tutorial-instruction">Сожми правый кулак, чтобы захватить металлический предмет</p>
+      </div>
+      <div class="tutorial-actions">
+        <button id="btn-skip-tutorial" class="tactical-cmd-btn ghost" title="Наведи курсор и сожми кулак ✊">
+          <span class="cmd-title">[ ПРОПУСТИТЬ ОБУЧЕНИЕ (✊ КУЛАК) ▶ ]</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Screen: Results (AAA Combat Evaluation Dossier) -->
+  <div id="screen-results" class="screen hidden">
+    <div class="tactical-dialogue-panel debrief-panel">
+      <div class="panel-header">
+        <span class="panel-tag">MISSION DEBRIEFING</span>
+        <span class="panel-tech">TACTICAL REPORT</span>
+      </div>
+      <h2 class="dialogue-title">ИТОГИ БОЕВОЙ ОПЕРАЦИИ</h2>
+      
+      <div class="results-grid">
+        <div class="result-cell">
+          <span class="result-label">ОБЩИЙ СЧЁТ</span>
+          <span id="result-score" class="result-num">0</span>
+        </div>
+        <div class="result-cell">
+          <span class="result-label">ТОЧНОСТЬ ПОРАЖЕНИЯ</span>
+          <span id="result-accuracy" class="result-num">0%</span>
+        </div>
+        <div class="result-cell">
+          <span class="result-label">НЕЙТРАЛИЗОВАНО ВРАГОВ</span>
+          <span id="result-kills" class="result-num">0</span>
+        </div>
+        <div class="result-cell">
+          <span class="result-label">МАКС. СЕРИЯ КОМБО</span>
+          <span id="result-combo" class="result-num">x0</span>
+        </div>
+      </div>
+
+      <div id="result-errors" class="telemetry-fault-box">
+        <div class="fault-header">
+          <span class="fault-tag">AI COACH // АНАЛИЗ ТЕХНИКИ БОЯ</span>
+        </div>
+        <div id="result-top-error" class="fault-title">—</div>
+        <div id="result-error-advice" class="fault-desc"></div>
+      </div>
+
+      <div id="result-leaderboard" class="classified-ledger">
+        <div class="ledger-header">ТАБЛИЦА РЕКОРДОВ ЭШЕЛОНА</div>
+        <ol id="leaderboard-list" class="ledger-rows"></ol>
+      </div>
+
+      <button id="btn-restart" class="tactical-cmd-btn primary full-width">
+        <span class="cmd-index">[ 01 ]</span>
+        <div class="cmd-content">
+          <span class="cmd-title">ПОВТОРНАЯ ДИСЛОКАЦИЯ</span>
+          <span class="cmd-meta">Перезапустить миссию</span>
+        </div>
+        <span class="cmd-arrow">↺</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Screen: Pause -->
+  <div id="screen-pause" class="screen hidden">
+    <div class="tactical-dialogue-panel">
+      <div class="panel-header">
+        <span class="panel-tag">SENSOR LINK SUSPENDED</span>
+        <span class="panel-tech">OPTICAL INTERRUPT</span>
+      </div>
+      <h2 class="dialogue-title">ПАУЗА ТАКТИЧЕСКОГО ТРЕКИНГА</h2>
+      <p class="dialogue-lead">Руки вышли за пределы зоны видимости оптического сенсора</p>
+      
+      <div class="pause-settings-box">
+        <label for="slider-sensitivity-pause" class="slider-field-label">
+          <span class="field-title">КИНЕТИЧЕСКАЯ ЧУВСТВИТЕЛЬНОСТЬ</span>
+          <span id="label-sensitivity-pause" class="field-readout">130%</span>
+        </label>
+        <div class="slider-track-wrap">
+          <input type="range" id="slider-sensitivity-pause" min="60" max="240" value="130" class="tactical-slider" />
+        </div>
+      </div>
+
+      <p class="dialogue-sub">Верни руки в поле зрения камеры для мгновенного продолжения</p>
+    </div>
+  </div>
+
+  <!-- Crimson Puppet Strings Overlay (Mission 4: «Марионетка») -->
+  <div id="puppet-strings-overlay" class="puppet-strings-overlay hidden">
+    <svg class="puppet-strings-svg" viewBox="0 0 100 100" preserveAspectRatio="none">
+      <defs>
+        <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+          <feGaussianBlur stdDeviation="1.5" result="blur" />
+          <feMerge>
+            <feMergeNode in="blur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
+      </defs>
+      <!-- Tension Strings tethering from sky to player hands -->
+      <line class="puppet-string s1" x1="12" y1="0" x2="28" y2="90" filter="url(#glow-red)" />
+      <line class="puppet-string s2" x1="26" y1="0" x2="36" y2="82" filter="url(#glow-red)" />
+      <line class="puppet-string s3" x1="50" y1="0" x2="50" y2="60" filter="url(#glow-red)" />
+      <line class="puppet-string s4" x1="74" y1="0" x2="64" y2="82" filter="url(#glow-red)" />
+      <line class="puppet-string s5" x1="88" y1="0" x2="72" y2="90" filter="url(#glow-red)" />
+    </svg>
+    <div class="puppet-warning-badge">
+      <span class="warning-glyph">⚠️</span>
+      <span class="warning-text">НИТИ КУКЛОВОДА СЖИМАЮТСЯ! РАЗОРВИ ИХ: [ КЛАВИША T / РАЗВЕДИ КУЛАКИ ]</span>
+    </div>
+  </div>
+
+  <!-- Story & Visual Novel Container -->
+  <div id="story-container" class="story-container hidden"></div>
+
+  <!-- Optical Camera Hand Cursor (Aim & Fist-to-Click) -->
+  <div id="camera-cursor" class="camera-cursor hidden" aria-hidden="true">
+    <div class="cursor-glow"></div>
+    <div class="cursor-ring">
+      <svg class="cursor-progress-svg" viewBox="0 0 60 60">
+        <circle class="cursor-track" cx="30" cy="30" r="23" />
+        <circle id="cursor-progress-fill" class="cursor-fill" cx="30" cy="30" r="23" />
+      </svg>
+      <div class="cursor-crosshair">
+        <span class="cross-line h"></span>
+        <span class="cross-line v"></span>
+      </div>
+      <div class="cursor-center-dot"></div>
+      <div class="cursor-ticks">
+        <span class="tick t-top"></span>
+        <span class="tick t-right"></span>
+        <span class="tick t-bottom"></span>
+        <span class="tick t-left"></span>
+      </div>
+    </div>
+    <div class="cursor-tag-box">
+      <span id="cursor-icon" class="cursor-icon">🖐</span>
+      <span id="cursor-text" class="cursor-text">НАВЕДЕНИЕ</span>
+    </div>
+    <div id="cursor-shockwave" class="cursor-shockwave"></div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
